@@ -58,15 +58,24 @@ int main(int argc, char **argv) {
   }
   std::cout << "Client connected\n";
 
-  // Respond with +PONG\r\n to any command (hardcoded for this stage)
+  // Respond with +PONG\r\n to every command received (loop for multiple commands)
   const char *pong_response = "+PONG\r\n";
-  ssize_t bytes_sent = send(client_fd, pong_response, strlen(pong_response), 0);
-  if (bytes_sent < 0) {
-    std::cerr << "Failed to send response to client\n";
+  const size_t pong_len = strlen(pong_response);
+  char buffer[1024];
+  while (true) {
+    ssize_t bytes_received = recv(client_fd, buffer, sizeof(buffer), 0);
+    if (bytes_received <= 0) {
+      // Connection closed or error
+      break;
+    }
+    // For this stage, always respond with +PONG\r\n
+    ssize_t bytes_sent = send(client_fd, pong_response, pong_len, 0);
+    if (bytes_sent < 0) {
+      std::cerr << "Failed to send response to client\n";
+      break;
+    }
   }
-
   close(client_fd);
   close(server_fd);
-
   return 0;
 }

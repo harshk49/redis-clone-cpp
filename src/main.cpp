@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <thread>
 
 int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
@@ -50,32 +51,37 @@ int main(int argc, char **argv) {
   // You can use print statements as follows for debugging, they'll be visible when running tests.
   std::cout << "Logs from your program will appear here!\n";
 
-  int client_fd = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
-  if (client_fd < 0) {
-    std::cerr << "Failed to accept client connection\n";
-    close(server_fd);
-    return 1;
-  }
-  std::cout << "Client connected\n";
+  // Function to handle a single client connection
+  auto handle_client = [](int client_fd) {
+    const char *pong_response = "+PONG\r\n";
+    const size_t pong_len = strlen(pong_response);
+    char buffer[1024];
+    while (true) {
+      ssize_t bytes_received = recv(client_fd, buffer, sizeof(buffer), 0);
+      if (bytes_received <= 0) {
+        // Connection closed or error
+        break;
+      }
+      // Always respond with +PONG\r\n
+      ssize_t bytes_sent = send(client_fd, pong_response, pong_len, 0);
+      if (bytes_sent < 0) {
+        std::cerr << "Failed to send response to client\n";
+        break;
+      }
+    }
+    close(client_fd);
+  };
 
-  // Respond with +PONG\r\n to every command received (loop for multiple commands)
-  const char *pong_response = "+PONG\r\n";
-  const size_t pong_len = strlen(pong_response);
-  char buffer[1024];
+  // Accept clients in a loop and handle each in a new thread
   while (true) {
-    ssize_t bytes_received = recv(client_fd, buffer, sizeof(buffer), 0);
-    if (bytes_received <= 0) {
-      // Connection closed or error
-      break;
+    int client_fd = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
+    if (client_fd < 0) {
+      std::cerr << "Failed to accept client connection\n";
+      continue;
     }
-    // For this stage, always respond with +PONG\r\n
-    ssize_t bytes_sent = send(client_fd, pong_response, pong_len, 0);
-    if (bytes_sent < 0) {
-      std::cerr << "Failed to send response to client\n";
-      break;
-    }
+    std::thread(handle_client, client_fd).detach();
   }
-  close(client_fd);
+
   close(server_fd);
   return 0;
 }
